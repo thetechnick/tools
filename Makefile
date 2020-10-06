@@ -42,3 +42,6 @@ bin/%: FORCE
 	$(GOARGS) go build -o bin/$* cmd/$(COMPONENT)/main.go
 
 FORCE:
+
+clean:
+	@rm -rf bin

@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/bombsimon/logrusr"
@@ -49,6 +51,9 @@ func main() {
 	}
 
 	// Run
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	daemon, err := NewDaemon(log, checkDuration)
 	if err != nil {
 		log.Error(err, "creating daemon")
@@ -58,6 +63,8 @@ func main() {
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	daemon.Start(stopCh)
+
+	<-sigs
 }
 
 // This daemon puts non-link-local ipv6 addresses and

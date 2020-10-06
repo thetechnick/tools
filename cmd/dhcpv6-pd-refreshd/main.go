@@ -22,7 +22,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/bombsimon/logrusr"
@@ -79,11 +81,14 @@ func main() {
 	// Setup
 	renewScript, err := ensureRenewScript()
 	if err != nil {
-		fmt.Printf("ensuring script file: %v\n", err)
+		log.Error(err, "ensuring script file")
 		os.Exit(1)
 	}
 
 	// Run
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	daemon, err := NewDaemon(
 		log, checkDuration, prefixMask, checkInterfaceEnv, dnsHost, renewScript)
 	if err != nil {
@@ -94,6 +99,8 @@ func main() {
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	daemon.Start(stopCh)
+
+	<-sigs
 }
 
 // This daemon checks the DNS AAAA records of a host and when the host AAAA
@@ -238,7 +245,6 @@ func getInterfaceIPv6(name string) (net.IP, error) {
 	if err != nil {
 		return nil, fmt.Errorf("getting addresses on interface: %w", err)
 	}
-	fmt.Printf("found ips: %v\n", addrs)
 
 	for _, addr := range addrs {
 		ip, _, err := net.ParseCIDR(addr.String())
