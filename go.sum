@@ -1,0 +1,6 @@
+github.com/thetechnick/go-ipset v0.0.0-20201006142240-768bf4ae0ad2 h1:hi1+Fe/Qa4erIDQzy32EZeHt8HzFBtZ5IAMr4ewDJ1Y=
+github.com/thetechnick/go-ipset v0.0.0-20201006142240-768bf4ae0ad2/go.mod h1:vQu250F/1CXQj8PQ3Q4FtG5HPcen8U/CCsUz/5+RzNU=
+github.com/thetechnick/go-ipset v0.0.0-20201006142939-60b526112722 h1:3BS97DcpmN1ghO7EITIhh/AIzERKVqRCaSv6Kcx+dN4=
+github.com/thetechnick/go-ipset v0.0.0-20201006142939-60b526112722/go.mod h1:vQu250F/1CXQj8PQ3Q4FtG5HPcen8U/CCsUz/5+RzNU=
+github.com/thetechnick/go-ipset v0.0.0-20201006143231-bbec50853146 h1:AH2FqFNJzhq4ah5Kv5tL525wC4AlaTviiG7xZMA+VwI=
+github.com/thetechnick/go-ipset v0.0.0-20201006143231-bbec50853146/go.mod h1:vQu250F/1CXQj8PQ3Q4FtG5HPcen8U/CCsUz/5+RzNU=
