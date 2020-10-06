@@ -1,0 +1,8 @@
+[Unit]
+Description=IPv6 firewall group service
+
+[Service]
+ExecStart=/config/scripts/ipv6-fw-groupd
+
+[Install]
+WantedBy=multi-user.target

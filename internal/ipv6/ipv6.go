@@ -19,8 +19,14 @@ import "net"
 
 var LinkLocalNet *net.IPNet
 
+// IsLinkLocal checks whether the given IP is in the fe80::/10 network.
 func IsLinkLocal(ip net.IP) bool {
 	return LinkLocalNet.Contains(ip)
+}
+
+// IsIPv6 checks wether the given IP is IPv6
+func IsIPv6(ip net.IP) bool {
+	return ip.To4() == nil
 }
 
 func init() {
