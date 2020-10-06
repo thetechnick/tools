@@ -3,7 +3,7 @@ Description=DHCPv6 Prefix Delegation Refresh Service
 
 [Service]
 Environment=REFRESHED_CHECK_INTERFACE=eth1
-Environment=REFRESHED_PREFIX_LEN=/62
+Environment=REFRESHED_PREFIX_LEN=/56
 ExecStart=/config/scripts/dhcpv6-pd-refreshd
 
 [Install]
