@@ -164,6 +164,10 @@ func (d *Daemon) run(stopCh <-chan struct{}) {
 		d.log.Error(err, "reconcile")
 	}
 
+	if err := d.renewFirewallGroups(); err != nil {
+		d.log.Info("renew firewall groups: %w", err)
+	}
+
 	for {
 		select {
 		case <-t.C:
