@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"net"
 	"os"
@@ -39,10 +40,20 @@ const (
 	REFRESHD_CHECK_INTERFACE = REFRESHD + "_CHECK_INTERFACE"
 	REFRESHD_CHECK_DURATION  = REFRESHD + "_CHECK_DURATION"
 	REFRESHD_DNS_HOST        = REFRESHD + "_DNS_HOST"
+	REFRESHD_FORCE           = REFRESHD + "_FORCE"
 )
 
 func main() {
 	log := logrusr.NewLogger(logrus.New())
+
+	if os.Getenv(REFRESHD_FORCE) != "" {
+		log.Info("executing FORCE renew!")
+		if err := daemon.renew(); err != nil {
+			log.Error(err, "executing renew")
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	// Env
 	checkInterfaceEnv := os.Getenv(REFRESHD_CHECK_INTERFACE)
@@ -115,6 +126,7 @@ type Daemon struct {
 	checkDuration                       time.Duration
 	prefixMask                          net.IPMask
 	interfaceName, dnsHost, renewScript string
+	firewallRenewScriptTemplate         *template.Template
 }
 
 func NewDaemon(
@@ -123,13 +135,19 @@ func NewDaemon(
 	prefixMask net.IPMask,
 	interfaceName, dnsHost, renewScript string,
 ) (*Daemon, error) {
+	t, err := template.New("interface-script").Parse(scriptTemplate)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Daemon{
-		log:           log,
-		checkDuration: checkDuration,
-		prefixMask:    prefixMask,
-		interfaceName: interfaceName,
-		dnsHost:       dnsHost,
-		renewScript:   renewScript,
+		log:                         log,
+		checkDuration:               checkDuration,
+		prefixMask:                  prefixMask,
+		interfaceName:               interfaceName,
+		dnsHost:                     dnsHost,
+		renewScript:                 renewScript,
+		firewallRenewScriptTemplate: t,
 	}, nil
 }
 
@@ -193,11 +211,22 @@ func (d *Daemon) reconcile() error {
 	d.log.Info(
 		"renewing DHCPv6-PD lease, old prefix is outdated",
 		"old_prefix", delegatedPrefix.String())
+	if err := d.renew(); err != nil {
+		return err
+	}
+	return nil
+}
 
+func (d *Daemon) renew() error {
 	cmd := exec.Command(d.renewScript)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("refreshing dhcpv6-pd: %w: %s", err, out)
+		return fmt.Errorf("renew dhcpv6-pd: %w: %s", err, out)
+	}
+
+	// Renew Firewall Groups
+	if err := d.renewFirewallGroups(); err != nil {
+		return fmt.Errorf("renew firewall groups: %w", err)
 	}
 	return nil
 }
@@ -226,7 +255,7 @@ func ensureRenewScript() (string, error) {
 	}
 	defer script.Close()
 	if err := script.Chmod(0744); err != nil {
-		return "", fmt.Errorf("chmod review script: %w", err)
+		return "", fmt.Errorf("chmod renew script: %w", err)
 	}
 	_, err = script.Write([]byte(renewDHCPv6PDScript))
 	if err != nil {
@@ -260,4 +289,99 @@ func getInterfaceIPv6(name string) (net.IP, error) {
 		return ip, nil
 	}
 	return nil, nil
+}
+
+const scriptTemplate = `#!/bin/vbash
+
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper begin
+
+{{range $interface := .Interfaces}}
+{{$i := .Name}}
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper delete firewall group ipv6-address-group NETv6_{{$i}}
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper delete firewall group ipv6-address-group ADDRv6_{{$i}}
+
+{{range $address := .Addresses}}
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper set firewall group ipv6-address-group ADDRv6_{{$i}} ipv6-address {{$address}}
+{{end}}
+
+{{range $network := .Networks}}
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper set firewall group ipv6-address-group NETv6_{{$i}} ipv6-address {{$network}}
+{{end}}
+{{end}}
+
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper commit
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper save
+/opt/vyatta/sbin/vyatta-cfg-cmd-wrapper end
+`
+
+type scriptContext struct {
+	Interfaces []interfaceContext
+}
+
+type interfaceContext struct {
+	Name      string
+	Addresses []string
+	Networks  []string
+}
+
+func (d *Daemon) renewFirewallGroups() error {
+	// Build Context
+	scriptCtx := &scriptContext{}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return fmt.Errorf("listing interfaces: %w", err)
+	}
+
+	for _, iface := range ifaces {
+		ifaceCtx := interfaceContext{
+			Name: iface.Name,
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return fmt.Errorf("listing addresses: %w", err)
+		}
+
+		for _, addr := range addrs {
+			ip, net, err := net.ParseCIDR(addr.String())
+			if err != nil {
+				return fmt.Errorf("parsing CIDR: %w", err)
+			}
+
+			if !ipv6.IsIPv6(ip) {
+				continue
+			}
+			if ipv6.IsLinkLocal(ip) {
+				continue
+			}
+
+			ifaceCtx.Addresses = append(ifaceCtx.Addresses, ip.String())
+			ifaceCtx.Networks = append(ifaceCtx.Networks, net.String())
+		}
+
+		scriptCtx.Interfaces = append(scriptCtx.Interfaces, ifaceCtx)
+	}
+
+	// Execute Template and Script
+	file, err := ioutil.TempFile("", "")
+	if err != nil {
+		return fmt.Errorf("opening temp file: %w", err)
+	}
+	defer file.Close()
+	defer os.Remove(file.Name())
+	if err := d.firewallRenewScriptTemplate.Execute(file, scriptCtx); err != nil {
+		return fmt.Errorf("templating interface script: %w", err)
+	}
+	if err := file.Chmod(0744); err != nil {
+		return fmt.Errorf("chmod renew script: %w", err)
+	}
+	file.Close()
+
+	cmd := exec.Command(file.Name())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("refreshing interface ips: %w: %s", err, out)
+	}
+
+	return nil
 }

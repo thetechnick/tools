@@ -21,15 +21,12 @@ all: \
 	all-mips64
 
 all-mipsle: \
-	bin/linux_mipsle/ipv6-fw-groupd \
 	bin/linux_mipsle/dhcpv6-pd-refreshd
 
 all-mips: \
-	bin/linux_mips/ipv6-fw-groupd \
 	bin/linux_mips/dhcpv6-pd-refreshd
 
 all-mips64: \
-	bin/linux_mips64/ipv6-fw-groupd \
 	bin/linux_mips64/dhcpv6-pd-refreshd
 
 bin/linux_amd64/%: GOARGS = GOOS=linux GOARCH=amd64
