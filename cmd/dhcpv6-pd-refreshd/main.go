@@ -46,22 +46,13 @@ const (
 func main() {
 	log := logrusr.NewLogger(logrus.New())
 
-	if os.Getenv(REFRESHD_FORCE) != "" {
-		log.Info("executing FORCE renew!")
-		if err := daemon.renew(); err != nil {
-			log.Error(err, "executing renew")
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-
 	// Env
 	checkInterfaceEnv := os.Getenv(REFRESHD_CHECK_INTERFACE)
 	prefixLengthEnv := os.Getenv(REFRESHD_PREFIX_LEN)
 	checkDurationEnv := os.Getenv(REFRESHD_CHECK_DURATION)
 	dnsHost := os.Getenv(REFRESHD_DNS_HOST)
 
-	if checkInterfaceEnv == "" {
+	if checkInterfaceEnv == "" && os.Getenv(REFRESHD_FORCE) != "" {
 		fmt.Printf("env %q: is required\n", REFRESHD_CHECK_INTERFACE)
 		os.Exit(1)
 	}
@@ -105,6 +96,15 @@ func main() {
 	if err != nil {
 		log.Error(err, "creating daemon")
 		os.Exit(1)
+	}
+
+	if os.Getenv(REFRESHD_FORCE) != "" {
+		log.Info("executing FORCE renew!")
+		if err := daemon.renew(); err != nil {
+			log.Error(err, "executing renew")
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	stopCh := make(chan struct{})
